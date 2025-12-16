@@ -62,6 +62,11 @@ class Database:
                 fecha_entrega TIMESTAMP,
                 asignado_a INTEGER,
                 motivo_ingreso TEXT,
+                plazo_dias INTEGER,
+                plazo_horas INTEGER,
+                plazo_minutos INTEGER,
+                fecha_inicio_plazo TIMESTAMP,
+                plazo_activo INTEGER DEFAULT 0,
                 FOREIGN KEY (cliente_id) REFERENCES clientes(id),
                 FOREIGN KEY (vehiculo_id) REFERENCES vehiculos(id),
                 FOREIGN KEY (asignado_a) REFERENCES usuarios(id)
@@ -82,33 +87,24 @@ class Database:
             )
         ''')
 
-        # Tabla de facturación
         self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS facturacion (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ingreso_id INTEGER NOT NULL,
-                monto_total REAL DEFAULT 0,
-                monto_pagado REAL DEFAULT 0,
-                estado_pago TEXT DEFAULT 'Pendiente',
-                fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (ingreso_id) REFERENCES ingresos(id)
-            )
-        ''')
-
-        # Tabla de pagos
-        self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS pagos (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                facturacion_id INTEGER NOT NULL,
-                monto REAL NOT NULL,
-                metodo_pago TEXT,
-                fecha_pago TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                registrado_por INTEGER,
-                notas TEXT,
-                FOREIGN KEY (facturacion_id) REFERENCES facturacion(id),
-                FOREIGN KEY (registrado_por) REFERENCES usuarios(id)
-            )
-        ''')
+                CREATE TABLE IF NOT EXISTS pagos (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ingreso_id INTEGER NOT NULL,
+                    monto_total REAL DEFAULT 0,
+                    monto_pagado REAL DEFAULT 0,
+                    estado_pago TEXT DEFAULT 'Pendiente',
+                    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    ultimo_pago REAL DEFAULT 0,
+                    ultimo_metodo_pago TEXT,
+                    ultimo_fecha_pago TIMESTAMP,
+                    ultimo_registrado_por INTEGER,
+                    historial_pagos TEXT,
+                    notas TEXT,
+                    FOREIGN KEY (ingreso_id) REFERENCES ingresos(id),
+                    FOREIGN KEY (ultimo_registrado_por) REFERENCES usuarios(id)
+                )
+            ''')
 
         # Tabla de mensajes/reportes entre gerente y técnicos
         self.cursor.execute('''
@@ -194,7 +190,7 @@ class LoginWindow:
         info_frame = ttk.LabelFrame(main_frame, text="Usuarios Predeterminados", padding="10")
         info_frame.grid(row=6, column=0, columnspan=2, pady=10)
 
-        ttk.Label(info_frame, text="ejecutivo / 123\ngerente / 123",
+        ttk.Label(info_frame, text="ejecutivo.\ngerente.",
                   font=('Arial', 9)).pack()
 
         self.password_entry.bind('<Return>', lambda e: self.login())
@@ -625,7 +621,6 @@ class EjecutivoWindow:
         # Frame de información y ayuda
         info_frame = ttk.Frame(motivo_frame)
         info_frame.pack(fill='x', pady=10)
-
 
         ttk.Separator(motivo_frame, orient='horizontal').pack(fill='x', pady=10)
 
@@ -1221,7 +1216,7 @@ class EjecutivoWindow:
 
         self.hist_text.delete(1.0, tk.END)
 
-        # Consulta mejorada: ordenar por última actividad (último servicio registrado)
+        # Consulta mejorada: ordenar por última actividad
         self.db.cursor.execute('''
             SELECT i.id, c.nombre, c.telefono, c.correo, v.marca, v.modelo, v.placa, 
                    v.anio, v.color, i.estado, i.fecha_ingreso, i.fecha_entrega, i.motivo_ingreso,
@@ -1239,7 +1234,7 @@ class EjecutivoWindow:
             self.hist_text.insert(tk.END, "No se encontraron registros\n")
             return
 
-        # Encabezado con número de resultados
+        # Encabezado
         self.hist_text.insert(tk.END, "╔" + "═" * 78 + "╗\n")
         self.hist_text.insert(tk.END, f"║  📋 HISTORIAL DE SERVICIOS - {len(ingresos)} resultado(s) encontrado(s)".ljust(
             79) + "║\n")
@@ -1250,19 +1245,19 @@ class EjecutivoWindow:
             ing_id, cli_nom, cli_tel, cli_corr, v_marca, v_modelo, v_placa, v_anio, v_color, \
                 estado, f_ing, f_ent, motivo, ultima_actividad = ingreso
 
-            # Separador de inicio
+            # Separador
             self.hist_text.insert(tk.END, "╔" + "═" * 78 + "╗\n")
             self.hist_text.insert(tk.END, f"║  SERVICIO #{idx} - FOLIO: {ing_id}".ljust(79) + "║\n")
             self.hist_text.insert(tk.END, "╚" + "═" * 78 + "╝\n\n")
 
-            # ========== INFORMACIÓN DEL CLIENTE ==========
+            # CLIENTE
             self.hist_text.insert(tk.END, "👤 CLIENTE:\n")
             self.hist_text.insert(tk.END, "─" * 80 + "\n")
             self.hist_text.insert(tk.END, f"   Nombre:    {cli_nom}\n")
             self.hist_text.insert(tk.END, f"   Teléfono:  {cli_tel}\n")
             self.hist_text.insert(tk.END, f"   Correo:    {cli_corr if cli_corr else 'N/A'}\n\n")
 
-            # ========== INFORMACIÓN DEL VEHÍCULO ==========
+            # VEHÍCULO
             self.hist_text.insert(tk.END, "🚗 VEHÍCULO:\n")
             self.hist_text.insert(tk.END, "─" * 80 + "\n")
             self.hist_text.insert(tk.END, f"   {v_marca} {v_modelo}\n")
@@ -1270,7 +1265,7 @@ class EjecutivoWindow:
             self.hist_text.insert(tk.END, f"   Año:    {v_anio if v_anio else 'N/A'}\n")
             self.hist_text.insert(tk.END, f"   Color:  {v_color if v_color else 'N/A'}\n\n")
 
-            # ========== INFORMACIÓN DEL SERVICIO ==========
+            # SERVICIO
             self.hist_text.insert(tk.END, "📊 INFORMACIÓN DEL SERVICIO:\n")
             self.hist_text.insert(tk.END, "─" * 80 + "\n")
             self.hist_text.insert(tk.END, f"   Estado Actual:      {estado}\n")
@@ -1279,93 +1274,64 @@ class EjecutivoWindow:
             self.hist_text.insert(tk.END, f"   Última Actividad:   {ultima_actividad if ultima_actividad else 'N/A'}\n")
             self.hist_text.insert(tk.END, f"   Motivo:             {motivo}\n\n")
 
-            # ========== INFORMACIÓN FINANCIERA ==========
+            # ========== FACTURACIÓN Y PAGOS (CORREGIDO) ==========
             self.hist_text.insert(tk.END, "💰 FACTURACIÓN Y PAGOS:\n")
             self.hist_text.insert(tk.END, "─" * 80 + "\n")
 
-            # Obtener información de facturación
+            # 👇 CONSULTA CORREGIDA - usa tabla 'pagos' unificada
             self.db.cursor.execute('''
-                SELECT id, monto_total, monto_pagado, estado_pago, fecha_creacion
-                FROM facturacion
+                SELECT id, monto_total, monto_pagado, estado_pago, fecha_creacion, historial_pagos
+                FROM pagos
                 WHERE ingreso_id = ?
             ''', (ing_id,))
 
-            facturacion = self.db.cursor.fetchone()
+            pago = self.db.cursor.fetchone()
 
-            if facturacion:
-                factura_id, monto_total, monto_pagado, estado_pago, fecha_factura = facturacion
+            if pago:
+                import json
+
+                pago_id, monto_total, monto_pagado, estado_pago, fecha_pago, historial_str = pago
                 pendiente = monto_total - monto_pagado
 
-                # Determinar símbolo según estado
+                # Símbolo según estado
                 if estado_pago == 'Pagado':
                     simbolo = "✅"
-                    color_estado = "PAGADO"
                 elif estado_pago == 'Parcial':
                     simbolo = "⏳"
-                    color_estado = "PAGO PARCIAL"
                 else:
                     simbolo = "⏰"
-                    color_estado = "PENDIENTE DE PAGO"
 
-                self.hist_text.insert(tk.END, f"   {simbolo} Estado:            {color_estado}\n")
-                self.hist_text.insert(tk.END, f"   💵 Monto Total:        ${monto_total:,.2f}\n")
-                self.hist_text.insert(tk.END, f"   ✅ Monto Pagado:       ${monto_pagado:,.2f}\n")
-                self.hist_text.insert(tk.END, f"   ⏳ Monto Pendiente:    ${pendiente:,.2f}\n")
-                self.hist_text.insert(tk.END, f"   📅 Fecha Facturación:  {fecha_factura}\n\n")
+                self.hist_text.insert(tk.END, f"   {simbolo} Estado: {estado_pago}\n")
+                self.hist_text.insert(tk.END, f"   💵 Monto Total:     ${monto_total:,.2f}\n")
+                self.hist_text.insert(tk.END, f"   ✅ Monto Pagado:    ${monto_pagado:,.2f}\n")
+                self.hist_text.insert(tk.END, f"   ⏳ Pendiente:       ${pendiente:,.2f}\n")
+                self.hist_text.insert(tk.END, f"   📅 Fecha:           {fecha_pago}\n\n")
 
-                # Obtener historial de pagos
-                self.db.cursor.execute('''
-                    SELECT p.fecha_pago, p.monto, p.metodo_pago, u.nombre, p.notas
-                    FROM pagos p
-                    LEFT JOIN usuarios u ON p.registrado_por = u.id
-                    WHERE p.facturacion_id = ?
-                    ORDER BY p.fecha_pago DESC
-                ''', (factura_id,))
+                # Mostrar historial de pagos
+                historial_pagos = []
+                if historial_str:
+                    try:
+                        historial_pagos = json.loads(historial_str)
+                    except:
+                        pass
 
-                pagos = self.db.cursor.fetchall()
-
-                if pagos:
-                    self.hist_text.insert(tk.END, f"   💳 HISTORIAL DE PAGOS ({len(pagos)} pago(s)):\n")
+                if historial_pagos:
+                    self.hist_text.insert(tk.END, f"   💳 HISTORIAL ({len(historial_pagos)} pago(s)):\n")
                     self.hist_text.insert(tk.END, "   " + "·" * 76 + "\n")
 
-                    for pago_idx, pago in enumerate(pagos, 1):
-                        fecha_pago, monto_pago, metodo, usuario, notas = pago
-                        self.hist_text.insert(tk.END, f"\n   Pago #{pago_idx}:\n")
-                        self.hist_text.insert(tk.END, f"      • Fecha:   {fecha_pago}\n")
-                        self.hist_text.insert(tk.END, f"      • Monto:   ${monto_pago:,.2f}\n")
-                        self.hist_text.insert(tk.END, f"      • Método:  {metodo if metodo else 'N/A'}\n")
-                        self.hist_text.insert(tk.END, f"      • Por:     {usuario if usuario else 'N/A'}\n")
-                        if notas:
-                            self.hist_text.insert(tk.END, f"      • Notas:   {notas}\n")
-
+                    for idx_pago, p in enumerate(historial_pagos, 1):
+                        self.hist_text.insert(tk.END, f"\n   Pago #{idx_pago}:\n")
+                        self.hist_text.insert(tk.END, f"      • Fecha:  {p.get('fecha', 'N/A')}\n")
+                        self.hist_text.insert(tk.END, f"      • Monto:  ${p.get('monto', 0):.2f}\n")
+                        self.hist_text.insert(tk.END, f"      • Método: {p.get('metodo', 'N/A')}\n")
+                        if p.get('notas'):
+                            self.hist_text.insert(tk.END, f"      • Notas:  {p['notas']}\n")
                     self.hist_text.insert(tk.END, "\n")
                 else:
-                    self.hist_text.insert(tk.END, "   📭 No hay pagos registrados aún\n\n")
-
-                # Mostrar resumen financiero si está pagado completamente
-                if estado_pago == 'Pagado':
-                    self.hist_text.insert(tk.END, "   " + "─" * 76 + "\n")
-                    self.hist_text.insert(tk.END, f"   ✅ SERVICIO PAGADO COMPLETAMENTE\n")
-                    self.hist_text.insert(tk.END,
-                                          f"   📊 Total recibido: ${monto_pagado:,.2f} en {len(pagos)} pago(s)\n")
-                    self.hist_text.insert(tk.END, "   " + "─" * 76 + "\n\n")
-                elif estado_pago == 'Parcial':
-                    porcentaje = (monto_pagado / monto_total * 100) if monto_total > 0 else 0
-                    self.hist_text.insert(tk.END, "   " + "─" * 76 + "\n")
-                    self.hist_text.insert(tk.END, f"   ⏳ PAGO PARCIAL - {porcentaje:.1f}% completado\n")
-                    self.hist_text.insert(tk.END, f"   💵 Falta por cobrar: ${pendiente:,.2f}\n")
-                    self.hist_text.insert(tk.END, "   " + "─" * 76 + "\n\n")
-                else:
-                    self.hist_text.insert(tk.END, "   " + "─" * 76 + "\n")
-                    self.hist_text.insert(tk.END, f"   ⏰ PAGO PENDIENTE\n")
-                    self.hist_text.insert(tk.END, f"   💵 Total a cobrar: ${monto_total:,.2f}\n")
-                    self.hist_text.insert(tk.END, "   " + "─" * 76 + "\n\n")
-
+                    self.hist_text.insert(tk.END, "   📭 Sin pagos registrados\n\n")
             else:
                 self.hist_text.insert(tk.END, "   ❌ SIN PRECIO ESTABLECIDO\n")
-                self.hist_text.insert(tk.END, "   Este servicio aún no tiene un precio asignado.\n")
-                self.hist_text.insert(tk.END,
-                                      "   Vaya a la pestaña 'Facturación y Pagos' para establecer el precio.\n\n")
+                self.hist_text.insert(tk.END, "   Este servicio aún no tiene un precio asignado.\n\n")
 
             # ========== HISTORIAL DE SERVICIOS ==========
             self.db.cursor.execute('''
@@ -1411,7 +1377,7 @@ class EjecutivoWindow:
                     self.hist_text.insert(tk.END, f"      De: {de_user} → Para: {para_user}\n")
                     self.hist_text.insert(tk.END, f"      💬 {mensaje}\n\n")
 
-            # Separador final del servicio
+            # Separador final
             self.hist_text.insert(tk.END, "\n" + "═" * 80 + "\n\n")
 
         # Resumen final
@@ -1614,36 +1580,31 @@ class EjecutivoWindow:
             )
 
     def cargar_facturacion(self):
-        """Carga todos los servicios con su información de facturación"""
         for item in self.tree_facturacion.get_children():
             self.tree_facturacion.delete(item)
 
+        # Consulta simplificada - ya no necesita LEFT JOIN
         self.db.cursor.execute('''
             SELECT 
-                f.id,
+                p.id,
                 i.id,
                 c.nombre,
                 v.marca || ' ' || v.modelo,
                 v.placa,
-                COALESCE(f.monto_total, 0),
-                COALESCE(f.monto_pagado, 0),
-                COALESCE(f.monto_total, 0) - COALESCE(f.monto_pagado, 0),
-                f.estado_pago
+                COALESCE(p.monto_total, 0),
+                COALESCE(p.monto_pagado, 0),
+                COALESCE(p.monto_total, 0) - COALESCE(p.monto_pagado, 0),
+                COALESCE(p.estado_pago, 'Sin precio')
             FROM ingresos i
             JOIN clientes c ON i.cliente_id = c.id
             JOIN vehiculos v ON i.vehiculo_id = v.id
-            LEFT JOIN facturacion f ON i.id = f.ingreso_id
+            LEFT JOIN pagos p ON i.id = p.ingreso_id
             ORDER BY i.fecha_ingreso DESC
         ''')
 
         for row in self.db.cursor.fetchall():
-            factura_id, ingreso_id, cliente, vehiculo, placa, total, pagado, pendiente, estado = row
+            pago_id, ingreso_id, cliente, vehiculo, placa, total, pagado, pendiente, estado = row
 
-            # Si no tiene factura, crear una pendiente
-            if not estado:
-                estado = 'Sin precio'
-
-            # Determinar tag de color
             if estado == 'Pagado':
                 tag = 'pagado'
             elif estado == 'Parcial':
@@ -1652,7 +1613,7 @@ class EjecutivoWindow:
                 tag = 'pendiente'
 
             valores = (
-                factura_id if factura_id else 'N/A',
+                pago_id if pago_id else 'N/A',
                 ingreso_id,
                 cliente,
                 vehiculo,
@@ -1686,7 +1647,7 @@ class EjecutivoWindow:
             FROM ingresos i
             JOIN clientes c ON i.cliente_id = c.id
             JOIN vehiculos v ON i.vehiculo_id = v.id
-            LEFT JOIN facturacion f ON i.id = f.ingreso_id
+            LEFT JOIN pagos f ON i.id = f.ingreso_id
             WHERE c.nombre LIKE ? OR v.placa LIKE ?
             ORDER BY i.fecha_ingreso DESC
         ''', (f'%{busqueda}%', f'%{busqueda}%'))
@@ -1719,21 +1680,14 @@ class EjecutivoWindow:
             self.tree_facturacion.insert('', 'end', values=valores, tags=(tag,))
 
     def establecer_precio_servicio(self):
-        """Establece o actualiza el precio de un servicio"""
         selected = self.tree_facturacion.selection()
         if not selected:
-            messagebox.showwarning(
-                "Advertencia",
-                "⚠️ Seleccione un servicio de la tabla"
-            )
+            messagebox.showwarning("Advertencia", "⚠️ Seleccione un servicio de la tabla")
             return
 
         monto_str = self.entry_monto_total.get().strip()
         if not monto_str:
-            messagebox.showwarning(
-                "Advertencia",
-                "⚠️ Ingrese el monto total del servicio"
-            )
+            messagebox.showwarning("Advertencia", "⚠️ Ingrese el monto total del servicio")
             return
 
         try:
@@ -1741,37 +1695,19 @@ class EjecutivoWindow:
             if monto < 0:
                 raise ValueError("El monto no puede ser negativo")
         except ValueError:
-            messagebox.showerror(
-                "Error",
-                "❌ Ingrese un monto válido"
-            )
+            messagebox.showerror("Error", "❌ Ingrese un monto válido")
             return
 
         values = self.tree_facturacion.item(selected[0])['values']
         ingreso_id = values[1]
-        cliente = values[2]
-        vehiculo = values[3]
 
-        # Verificar si ya existe facturación
-        self.db.cursor.execute('SELECT id, monto_pagado FROM facturacion WHERE ingreso_id = ?',
-                               (ingreso_id,))
+        # Verificar si ya existe registro de pago
+        self.db.cursor.execute('SELECT id, monto_pagado FROM pagos WHERE ingreso_id = ?', (ingreso_id,))
         resultado = self.db.cursor.fetchone()
-
-        confirmacion = messagebox.askyesno(
-            "Confirmar Precio",
-            f"¿Establecer precio del servicio?\n\n"
-            f"Cliente: {cliente}\n"
-            f"Vehículo: {vehiculo}\n\n"
-            f"💰 Monto Total: ${monto:.2f}"
-        )
-
-        if not confirmacion:
-            return
 
         try:
             if resultado:
-                # Actualizar precio existente
-                factura_id, monto_pagado = resultado
+                pago_id, monto_pagado = resultado
 
                 # Recalcular estado
                 if monto_pagado >= monto:
@@ -1782,344 +1718,342 @@ class EjecutivoWindow:
                     estado = 'Pendiente'
 
                 self.db.cursor.execute('''
-                    UPDATE facturacion 
+                    UPDATE pagos 
                     SET monto_total = ?, estado_pago = ?
                     WHERE id = ?
-                ''', (monto, estado, factura_id))
+                ''', (monto, estado, pago_id))
             else:
-                # Crear nueva facturación
+                # Crear nuevo registro
                 self.db.cursor.execute('''
-                    INSERT INTO facturacion (ingreso_id, monto_total, monto_pagado, estado_pago)
+                    INSERT INTO pagos (ingreso_id, monto_total, monto_pagado, estado_pago)
                     VALUES (?, ?, 0, 'Pendiente')
                 ''', (ingreso_id, monto))
 
             self.db.conn.commit()
-
-            messagebox.showinfo(
-                "✓ Precio Establecido",
-                f"Se estableció el precio correctamente\n\n"
-                f"💰 Monto: ${monto:.2f}"
-            )
+            messagebox.showinfo("✓ Precio Establecido", f"Se estableció el precio: ${monto:.2f}")
 
             self.entry_monto_total.delete(0, tk.END)
             self.cargar_facturacion()
             self.actualizar_resumen_financiero()
 
         except Exception as e:
-            messagebox.showerror("Error", f"❌ Error al establecer precio:\n\n{str(e)}")
+            messagebox.showerror("Error", f"❌ Error: {str(e)}")
             self.db.conn.rollback()
 
     def registrar_pago(self):
-        """Registra un pago parcial o total"""
-        selected = self.tree_facturacion.selection()
-        if not selected:
-            messagebox.showwarning(
-                "Advertencia",
-                "⚠️ Seleccione un servicio de la tabla"
-            )
+        """Registra un nuevo pago para un servicio usando la interfaz existente"""
+
+        # Verificar que hay un servicio seleccionado
+        selection = self.tree_facturacion.selection()
+        if not selection:
+            messagebox.showwarning("Advertencia", "Selecciona un servicio primero")
             return
 
-        values = self.tree_facturacion.item(selected[0])['values']
-        factura_id = values[0]
-
-        if factura_id == 'N/A':
-            messagebox.showwarning(
-                "Advertencia",
-                "⚠️ Primero debe establecer un precio\n\n"
-                "Use el botón 'Establecer/Actualizar Precio'"
-            )
-            return
-
-        ingreso_id = values[1]
-        cliente = values[2]
-        vehiculo = values[3]
-
-        # Obtener monto total y pagado actual
-        self.db.cursor.execute('''
-            SELECT monto_total, monto_pagado 
-            FROM facturacion 
-            WHERE id = ?
-        ''', (factura_id,))
-
-        resultado = self.db.cursor.fetchone()
-        if not resultado:
-            messagebox.showerror("Error", "No se encontró la facturación")
-            return
-
-        monto_total, monto_pagado = resultado
-        pendiente = monto_total - monto_pagado
-
-        # Validar monto de pago
-        monto_pago_str = self.entry_monto_pago.get().strip()
-        if not monto_pago_str:
-            messagebox.showwarning(
-                "Advertencia",
-                "⚠️ Ingrese el monto del pago"
-            )
-            return
-
+        # Obtener datos del formulario de la interfaz
         try:
-            monto_pago = float(monto_pago_str)
-            if monto_pago <= 0:
-                raise ValueError("El monto debe ser mayor a 0")
-            if monto_pago > pendiente:
-                raise ValueError("El monto excede el saldo pendiente")
-        except ValueError as e:
-            messagebox.showerror(
-                "Error",
-                f"❌ Monto inválido\n\n{str(e)}"
-            )
-            return
+            # Obtener el monto ingresado
+            monto_str = self.entry_monto_pago.get().strip()
 
-        metodo = self.combo_metodo_pago.get()
-        notas = self.entry_notas_pago.get().strip()
+            # Limpiar el monto (eliminar símbolos de moneda, comas, espacios)
+            monto_str = monto_str.replace('$', '').replace(',', '').replace(' ', '')
 
-        # Calcular nuevo estado
-        nuevo_pagado = monto_pagado + monto_pago
-        if nuevo_pagado >= monto_total:
-            nuevo_estado = 'Pagado'
-        elif nuevo_pagado > 0:
-            nuevo_estado = 'Parcial'
-        else:
-            nuevo_estado = 'Pendiente'
+            # Validar que sea un número
+            try:
+                monto = float(monto_str)
+            except ValueError:
+                messagebox.showerror("Error",
+                                     f"El monto debe ser un número válido.\nRecibido: '{self.entry_monto_pago.get()}'")
+                return
 
-        confirmacion = messagebox.askyesno(
-            "Confirmar Pago",
-            f"¿Registrar el siguiente pago?\n\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"Cliente: {cliente}\n"
-            f"Vehículo: {vehiculo}\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"💰 Monto del pago: ${monto_pago:.2f}\n"
-            f"💳 Método: {metodo}\n\n"
-            f"📊 Resumen:\n"
-            f"   Total del servicio: ${monto_total:.2f}\n"
-            f"   Pagado anteriormente: ${monto_pagado:.2f}\n"
-            f"   Nuevo pago: ${monto_pago:.2f}\n"
-            f"   ━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"   Total pagado: ${nuevo_pagado:.2f}\n"
-            f"   Pendiente: ${monto_total - nuevo_pagado:.2f}\n"
-            f"   Estado: {nuevo_estado}"
-        )
+            if monto <= 0:
+                messagebox.showerror("Error", "El monto debe ser mayor a 0")
+                return
 
-        if not confirmacion:
-            return
+            # Obtener método de pago
+            metodo_pago = self.combo_metodo_pago.get()
+            if not metodo_pago:
+                messagebox.showerror("Error", "Selecciona un método de pago")
+                return
 
-        try:
-            # Registrar el pago
+            # Obtener notas (opcional)
+            notas = self.entry_notas_pago.get().strip()
+
+            # ⚠️ CORRECCIÓN CRÍTICA: Obtener el ingreso_id del servicio seleccionado
+            item = self.tree_facturacion.item(selection[0])
+            values = item['values']
+
+            # El ingreso_id está en la posición [1], NO en [0]
+            # Posición [0] = pago_id (o 'N/A')
+            # Posición [1] = ingreso_id ✓
+            ingreso_id = values[1]
+
+            # Importar módulos necesarios
+            import json
+            from datetime import datetime
+
+            # Obtener información actual del pago
             self.db.cursor.execute('''
-                INSERT INTO pagos (facturacion_id, monto, metodo_pago, registrado_por, notas)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (factura_id, monto_pago, metodo, self.user_id, notas))
+                SELECT id, monto_total, monto_pagado, historial_pagos, estado_pago
+                FROM pagos
+                WHERE ingreso_id = ?
+            ''', (ingreso_id,))
 
-            # Actualizar facturación
+            pago_registro = self.db.cursor.fetchone()
+
+            if not pago_registro:
+                messagebox.showerror("Error", "No se encontró información de pago para este servicio")
+                return
+
+            pago_id, monto_total, monto_pagado_actual, historial_json, estado_actual = pago_registro
+
+            # Calcular el monto pendiente
+            monto_pendiente = monto_total - (monto_pagado_actual or 0)
+
+            # Advertir si el pago es mayor al pendiente
+            if monto > monto_pendiente:
+                respuesta = messagebox.askyesno("Confirmar",
+                                                f"El monto a pagar (${monto:.2f}) es mayor al pendiente (${monto_pendiente:.2f}).\n\n"
+                                                "¿Deseas continuar de todas formas?")
+                if not respuesta:
+                    return
+
+            # Calcular nuevo monto pagado
+            nuevo_monto_pagado = (monto_pagado_actual or 0) + monto
+
+            # Actualizar historial de pagos
+            if historial_json:
+                try:
+                    historial = json.loads(historial_json)
+                except:
+                    historial = []
+            else:
+                historial = []
+
+            # Agregar el nuevo pago al historial
+            historial.append({
+                'fecha': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'monto': monto,
+                'metodo': metodo_pago,
+                'registrado_por': self.user_id,
+                'notas': notas if notas else None
+            })
+
+            # Determinar el nuevo estado del pago
+            if nuevo_monto_pagado >= monto_total:
+                nuevo_estado = 'Pagado'
+            elif nuevo_monto_pagado > 0:
+                nuevo_estado = 'Parcial'
+            else:
+                nuevo_estado = 'Pendiente'
+
+            # Actualizar el registro en la base de datos
             self.db.cursor.execute('''
-                UPDATE facturacion
-                SET monto_pagado = ?, estado_pago = ?
-                WHERE id = ?
-            ''', (nuevo_pagado, nuevo_estado, factura_id))
+                UPDATE pagos
+                SET monto_pagado = ?,
+                    estado_pago = ?,
+                    ultimo_pago = ?,
+                    ultimo_metodo_pago = ?,
+                    ultimo_fecha_pago = CURRENT_TIMESTAMP,
+                    ultimo_registrado_por = ?,
+                    historial_pagos = ?
+                WHERE ingreso_id = ?
+            ''', (nuevo_monto_pagado, nuevo_estado, monto, metodo_pago,
+                  self.user_id, json.dumps(historial), ingreso_id))
 
+            # Guardar cambios
             self.db.conn.commit()
 
-            messagebox.showinfo(
-                "✓ Pago Registrado",
-                f"El pago se registró correctamente\n\n"
-                f"💰 Monto pagado: ${monto_pago:.2f}\n"
-                f"💳 Método: {metodo}\n"
-                f"📊 Estado: {nuevo_estado}\n\n"
-                f"Pendiente: ${monto_total - nuevo_pagado:.2f}"
-            )
+            # Mostrar mensaje de éxito
+            messagebox.showinfo("Éxito",
+                                f"Pago registrado correctamente\n\n"
+                                f"Monto: ${monto:.2f}\n"
+                                f"Método: {metodo_pago}\n"
+                                f"Nuevo estado: {nuevo_estado}\n"
+                                f"Total pagado: ${nuevo_monto_pagado:.2f} de ${monto_total:.2f}")
 
-            # Limpiar formulario
+            # Limpiar los campos del formulario
             self.entry_monto_pago.delete(0, tk.END)
             self.entry_notas_pago.delete(0, tk.END)
+            self.combo_metodo_pago.current(0)
 
-            # Actualizar vistas
+            # Recargar la tabla de facturación
             self.cargar_facturacion()
+
+            # Actualizar resumen financiero
             self.actualizar_resumen_financiero()
 
         except Exception as e:
-            messagebox.showerror("Error", f"❌ Error al registrar pago:\n\n{str(e)}")
-            self.db.conn.rollback()
+            messagebox.showerror("Error", f"Error al registrar el pago:\n{str(e)}")
+            import traceback
+            print("Error completo:")
+            print(traceback.format_exc())
 
     def ver_detalle_facturacion(self):
-        """Muestra el detalle completo de facturación y pagos"""
+        import json
+
         selected = self.tree_facturacion.selection()
         if not selected:
-            messagebox.showwarning(
-                "Advertencia",
-                "⚠️ Seleccione un servicio"
-            )
+            messagebox.showwarning("Advertencia", "⚠️ Seleccione un servicio")
             return
 
         values = self.tree_facturacion.item(selected[0])['values']
-        factura_id = values[0]
+        pago_id = values[0]
 
-        if factura_id == 'N/A':
-            messagebox.showinfo(
-                "Sin Facturación",
-                "Este servicio aún no tiene precio establecido"
-            )
+        if pago_id == 'N/A':
+            messagebox.showinfo("Sin Facturación", "Este servicio no tiene precio establecido")
             return
-
-        ingreso_id = values[1]
-        cliente = values[2]
-        vehiculo = values[3]
-        placa = values[4]
 
         # Obtener información completa
         self.db.cursor.execute('''
-            SELECT monto_total, monto_pagado, estado_pago, fecha_creacion
-            FROM facturacion
-            WHERE id = ?
-        ''', (factura_id,))
+            SELECT p.monto_total, p.monto_pagado, p.estado_pago, p.fecha_creacion, 
+                   p.historial_pagos, i.id, c.nombre, v.marca || ' ' || v.modelo, v.placa
+            FROM pagos p
+            JOIN ingresos i ON p.ingreso_id = i.id
+            JOIN clientes c ON i.cliente_id = c.id
+            JOIN vehiculos v ON i.vehiculo_id = v.id
+            WHERE p.id = ?
+        ''', (pago_id,))
 
-        factura_info = self.db.cursor.fetchone()
-        if not factura_info:
-            messagebox.showerror("Error", "No se encontró información de facturación")
+        pago_info = self.db.cursor.fetchone()
+        if not pago_info:
+            messagebox.showerror("Error", "No se encontró información")
             return
 
-        monto_total, monto_pagado, estado, fecha_creacion = factura_info
+        monto_total, monto_pagado, estado, fecha_creacion, historial_str, \
+            ingreso_id, cliente, vehiculo, placa = pago_info
+
         pendiente = monto_total - monto_pagado
 
-        # Obtener historial de pagos
-        self.db.cursor.execute('''
-            SELECT p.fecha_pago, p.monto, p.metodo_pago, u.nombre, p.notas
-            FROM pagos p
-            LEFT JOIN usuarios u ON p.registrado_por = u.id
-            WHERE p.facturacion_id = ?
-            ORDER BY p.fecha_pago DESC
-        ''', (factura_id,))
-
-        pagos = self.db.cursor.fetchall()
+        # Parsear historial
+        historial_pagos = []
+        if historial_str:
+            try:
+                historial_pagos = json.loads(historial_str)
+            except:
+                historial_pagos = []
 
         # Crear ventana de detalle
         detalle_win = tk.Toplevel(self.root)
         detalle_win.title("Detalle de Facturación")
         detalle_win.geometry("700x600")
-        detalle_win.resizable(False, False)
 
         frame = ttk.Frame(detalle_win, padding="20")
         frame.pack(fill='both', expand=True)
 
-        # Título
         ttk.Label(frame, text="DETALLE DE FACTURACIÓN",
                   font=('Arial', 14, 'bold')).pack(pady=10)
 
-        # Área de texto con scroll
-        info_text = scrolledtext.ScrolledText(frame, width=80, height=25, wrap=tk.WORD)
-        info_text.pack(fill='both', expand=True, pady=10)
+        info_text = scrolledtext.ScrolledText(frame, width=80, height=30, wrap=tk.WORD)
+        info_text.pack(fill='both', expand=True)
 
-        # Escribir información del servicio
+        # Escribir información
         info_text.insert(tk.END, "═" * 70 + "\n")
         info_text.insert(tk.END, "  INFORMACIÓN DEL SERVICIO\n")
         info_text.insert(tk.END, "═" * 70 + "\n\n")
 
-        info_text.insert(tk.END, f"📋 Folio de Ingreso: #{ingreso_id}\n")
+        info_text.insert(tk.END, f"📋 Folio: #{ingreso_id}\n")
         info_text.insert(tk.END, f"👤 Cliente: {cliente}\n")
         info_text.insert(tk.END, f"🚗 Vehículo: {vehiculo}\n")
         info_text.insert(tk.END, f"🔖 Placa: {placa}\n")
-        info_text.insert(tk.END, f"📅 Fecha de facturación: {fecha_creacion}\n\n")
+        info_text.insert(tk.END, f"📅 Fecha: {fecha_creacion}\n\n")
 
-        # Resumen financiero
         info_text.insert(tk.END, "═" * 70 + "\n")
         info_text.insert(tk.END, "  RESUMEN FINANCIERO\n")
         info_text.insert(tk.END, "═" * 70 + "\n\n")
 
-        info_text.insert(tk.END, f"💰 Monto Total:        ${monto_total:>12.2f}\n")
-        info_text.insert(tk.END, f"✅ Monto Pagado:       ${monto_pagado:>12.2f}\n")
-        info_text.insert(tk.END, f"⏳ Monto Pendiente:    ${pendiente:>12.2f}\n")
-        info_text.insert(tk.END, f"📊 Estado:             {estado}\n\n")
+        info_text.insert(tk.END, f"💰 Monto Total:     ${monto_total:>12.2f}\n")
+        info_text.insert(tk.END, f"✅ Monto Pagado:    ${monto_pagado:>12.2f}\n")
+        info_text.insert(tk.END, f"⏳ Pendiente:       ${pendiente:>12.2f}\n")
+        info_text.insert(tk.END, f"📊 Estado:          {estado}\n\n")
 
-        # Historial de pagos
-        if pagos:
+        if historial_pagos:
             info_text.insert(tk.END, "═" * 70 + "\n")
-            info_text.insert(tk.END, f"  HISTORIAL DE PAGOS ({len(pagos)} pago(s) registrado(s))\n")
+            info_text.insert(tk.END, f"  HISTORIAL DE PAGOS ({len(historial_pagos)} pago(s))\n")
             info_text.insert(tk.END, "═" * 70 + "\n\n")
 
-            for idx, pago in enumerate(pagos, 1):
-                fecha_pago, monto, metodo, usuario, notas = pago
-
+            for idx, pago in enumerate(historial_pagos, 1):
                 info_text.insert(tk.END, f"PAGO #{idx}\n")
-                info_text.insert(tk.END, f"  📅 Fecha: {fecha_pago}\n")
-                info_text.insert(tk.END, f"  💵 Monto: ${monto:.2f}\n")
-                info_text.insert(tk.END, f"  💳 Método: {metodo}\n")
-                info_text.insert(tk.END, f"  👤 Registrado por: {usuario if usuario else 'N/A'}\n")
-                if notas:
-                    info_text.insert(tk.END, f"  📝 Notas: {notas}\n")
+                info_text.insert(tk.END, f"  📅 Fecha:   {pago.get('fecha', 'N/A')}\n")
+                info_text.insert(tk.END, f"  💵 Monto:   ${pago.get('monto', 0):.2f}\n")
+                info_text.insert(tk.END, f"  💳 Método:  {pago.get('metodo', 'N/A')}\n")
+
+                # Obtener nombre del usuario
+                usuario_id = pago.get('registrado_por')
+                if usuario_id:
+                    self.db.cursor.execute('SELECT nombre FROM usuarios WHERE id = ?', (usuario_id,))
+                    usuario = self.db.cursor.fetchone()
+                    info_text.insert(tk.END, f"  👤 Por:     {usuario[0] if usuario else 'N/A'}\n")
+
+                if pago.get('notas'):
+                    info_text.insert(tk.END, f"  📝 Notas:   {pago['notas']}\n")
                 info_text.insert(tk.END, "\n")
         else:
             info_text.insert(tk.END, "═" * 70 + "\n")
             info_text.insert(tk.END, "  📭 Sin pagos registrados\n")
             info_text.insert(tk.END, "═" * 70 + "\n")
 
-        # Deshabilitar edición
         info_text.config(state='disabled')
 
-        # Botón cerrar
         ttk.Button(frame, text="Cerrar", command=detalle_win.destroy).pack(pady=10)
 
     def actualizar_resumen_financiero(self):
-        """Actualiza las estadísticas financieras del mes y año"""
         import datetime
 
         fecha_actual = datetime.datetime.now()
         mes_actual = fecha_actual.month
         anio_actual = fecha_actual.year
 
-        # Estadísticas del mes
+        # Estadísticas del mes - tabla unificada
         self.db.cursor.execute('''
-                    SELECT 
-                        COUNT(*),
-                        COALESCE(SUM(monto_total), 0),
-                        COALESCE(SUM(monto_pagado), 0),
-                        COALESCE(SUM(monto_total - monto_pagado), 0),
-                        SUM(CASE WHEN estado_pago = 'Pagado' THEN 1 ELSE 0 END),
-                        SUM(CASE WHEN estado_pago != 'Pagado' THEN 1 ELSE 0 END)
-                    FROM facturacion
-                    WHERE strftime('%m', fecha_creacion) = ? 
-                    AND strftime('%Y', fecha_creacion) = ?
-                ''', (f'{mes_actual:02d}', str(anio_actual)))
+            SELECT 
+                COUNT(*),
+                COALESCE(SUM(monto_total), 0),
+                COALESCE(SUM(monto_pagado), 0),
+                COALESCE(SUM(monto_total - monto_pagado), 0),
+                SUM(CASE WHEN estado_pago = 'Pagado' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN estado_pago != 'Pagado' THEN 1 ELSE 0 END)
+            FROM pagos
+            WHERE strftime('%m', fecha_creacion) = ? 
+            AND strftime('%Y', fecha_creacion) = ?
+        ''', (f'{mes_actual:02d}', str(anio_actual)))
 
         mes_data = self.db.cursor.fetchone()
 
         if mes_data:
             servicios_mes, total_mes, pagado_mes, pendiente_mes, pagados_mes, pendientes_mes = mes_data
-
             self.label_mes_total.config(text=f"${total_mes:,.2f}")
             self.label_mes_pagado.config(text=f"Pagado: ${pagado_mes:,.2f}")
             self.label_mes_pendiente.config(text=f"Pendiente: ${pendiente_mes:,.2f}")
 
         # Estadísticas del año
         self.db.cursor.execute('''
-                    SELECT 
-                        COUNT(*),
-                        COALESCE(SUM(monto_total), 0),
-                        COALESCE(SUM(monto_pagado), 0),
-                        COALESCE(SUM(monto_total - monto_pagado), 0),
-                        SUM(CASE WHEN estado_pago = 'Pagado' THEN 1 ELSE 0 END),
-                        SUM(CASE WHEN estado_pago != 'Pagado' THEN 1 ELSE 0 END)
-                    FROM facturacion
-                    WHERE strftime('%Y', fecha_creacion) = ?
-                ''', (str(anio_actual),))
+            SELECT 
+                COUNT(*),
+                COALESCE(SUM(monto_total), 0),
+                COALESCE(SUM(monto_pagado), 0),
+                COALESCE(SUM(monto_total - monto_pagado), 0),
+                SUM(CASE WHEN estado_pago = 'Pagado' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN estado_pago != 'Pagado' THEN 1 ELSE 0 END)
+            FROM pagos
+            WHERE strftime('%Y', fecha_creacion) = ?
+        ''', (str(anio_actual),))
 
         anio_data = self.db.cursor.fetchone()
 
         if anio_data:
             servicios_anio, total_anio, pagado_anio, pendiente_anio, pagados_anio, pendientes_anio = anio_data
-
             self.label_anio_total.config(text=f"${total_anio:,.2f}")
             self.label_anio_pagado.config(text=f"Pagado: ${pagado_anio:,.2f}")
             self.label_anio_pendiente.config(text=f"Pendiente: ${pendiente_anio:,.2f}")
 
         # Estadísticas generales
         self.db.cursor.execute('''
-                    SELECT 
-                        COUNT(*),
-                        SUM(CASE WHEN estado_pago = 'Pagado' THEN 1 ELSE 0 END),
-                        SUM(CASE WHEN estado_pago != 'Pagado' THEN 1 ELSE 0 END)
-                    FROM facturacion
-                ''')
+            SELECT 
+                COUNT(*),
+                SUM(CASE WHEN estado_pago = 'Pagado' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN estado_pago != 'Pagado' THEN 1 ELSE 0 END)
+            FROM pagos
+        ''')
 
         stats = self.db.cursor.fetchone()
         if stats:
@@ -2337,7 +2271,7 @@ class EjecutivoWindow:
                     FROM ingresos i
                     JOIN clientes c ON i.cliente_id = c.id
                     JOIN vehiculos v ON i.vehiculo_id = v.id
-                    LEFT JOIN facturacion f ON i.id = f.ingreso_id
+                    LEFT JOIN pagos f ON i.id = f.ingreso_id
                     ORDER BY i.fecha_ingreso DESC
                 ''')
 
@@ -2391,7 +2325,7 @@ class EjecutivoWindow:
                     FROM ingresos i
                     JOIN clientes c ON i.cliente_id = c.id
                     JOIN vehiculos v ON i.vehiculo_id = v.id
-                    LEFT JOIN facturacion f ON i.id = f.ingreso_id
+                    LEFT JOIN pagos f ON i.id = f.ingreso_id
                     WHERE c.nombre LIKE ? OR v.placa LIKE ?
                     ORDER BY i.fecha_ingreso DESC
                 ''', (f'%{busqueda}%', f'%{busqueda}%'))
@@ -2458,7 +2392,7 @@ class EjecutivoWindow:
         vehiculo = values[3]
 
         # Verificar si ya existe facturación
-        self.db.cursor.execute('SELECT id, monto_pagado FROM facturacion WHERE ingreso_id = ?',
+        self.db.cursor.execute('SELECT id, monto_pagado FROM pagos WHERE ingreso_id = ?',
                                (ingreso_id,))
         resultado = self.db.cursor.fetchone()
 
@@ -2487,14 +2421,14 @@ class EjecutivoWindow:
                     estado = 'Pendiente'
 
                 self.db.cursor.execute('''
-                            UPDATE facturacion 
+                            UPDATE pagos 
                             SET monto_total = ?, estado_pago = ?
                             WHERE id = ?
                         ''', (monto, estado, factura_id))
             else:
                 # Crear nueva facturación
                 self.db.cursor.execute('''
-                            INSERT INTO facturacion (ingreso_id, monto_total, monto_pagado, estado_pago)
+                            INSERT INTO pagos (ingreso_id, monto_total, monto_pagado, estado_pago)
                             VALUES (?, ?, 0, 'Pendiente')
                         ''', (ingreso_id, monto))
 
@@ -2515,138 +2449,181 @@ class EjecutivoWindow:
             self.db.conn.rollback()
 
     def registrar_pago(self):
-        """Registra un pago parcial o total"""
-        selected = self.tree_facturacion.selection()
-        if not selected:
-            messagebox.showwarning(
-                "Advertencia",
-                "⚠️ Seleccione un servicio de la tabla"
-            )
-            return
+        """Registra un nuevo pago usando los campos de la interfaz existente (sin ventana emergente)"""
 
-        values = self.tree_facturacion.item(selected[0])['values']
-        factura_id = values[0]
-
-        if factura_id == 'N/A':
-            messagebox.showwarning(
-                "Advertencia",
-                "⚠️ Primero debe establecer un precio\n\n"
-                "Use el botón 'Establecer/Actualizar Precio'"
-            )
-            return
-
-        ingreso_id = values[1]
-        cliente = values[2]
-        vehiculo = values[3]
-
-        # Obtener monto total y pagado actual
-        self.db.cursor.execute('''
-                    SELECT monto_total, monto_pagado 
-                    FROM facturacion 
-                    WHERE id = ?
-                ''', (factura_id,))
-
-        resultado = self.db.cursor.fetchone()
-        if not resultado:
-            messagebox.showerror("Error", "No se encontró la facturación")
-            return
-
-        monto_total, monto_pagado = resultado
-        pendiente = monto_total - monto_pagado
-
-        # Validar monto de pago
-        monto_pago_str = self.entry_monto_pago.get().strip()
-        if not monto_pago_str:
-            messagebox.showwarning(
-                "Advertencia",
-                "⚠️ Ingrese el monto del pago"
-            )
+        # Verificar que hay un servicio seleccionado
+        selection = self.tree_facturacion.selection()
+        if not selection:
+            messagebox.showwarning("Advertencia", "⚠️ Selecciona un servicio de la tabla primero")
             return
 
         try:
-            monto_pago = float(monto_pago_str)
-            if monto_pago <= 0:
-                raise ValueError("El monto debe ser mayor a 0")
-            if monto_pago > pendiente:
-                raise ValueError("El monto excede el saldo pendiente")
-        except ValueError as e:
-            messagebox.showerror(
-                "Error",
-                f"❌ Monto inválido\n\n{str(e)}"
+            # Obtener el monto ingresado del campo de la interfaz
+            monto_str = self.entry_monto_pago.get().strip()
+
+            if not monto_str:
+                messagebox.showwarning("Advertencia", "⚠️ Ingresa el monto a pagar")
+                return
+
+            # Limpiar el monto (eliminar símbolos de moneda, comas, espacios)
+            monto_str = monto_str.replace('$', '').replace(',', '').replace(' ', '')
+
+            # Validar que sea un número
+            try:
+                monto = float(monto_str)
+            except ValueError:
+                messagebox.showerror("Error",
+                                     f"❌ El monto debe ser un número válido\n\nRecibido: '{self.entry_monto_pago.get()}'")
+                return
+
+            if monto <= 0:
+                messagebox.showerror("Error", "❌ El monto debe ser mayor a 0")
+                return
+
+            # Obtener método de pago del combobox de la interfaz
+            metodo_pago = self.combo_metodo_pago.get()
+            if not metodo_pago:
+                messagebox.showerror("Error", "⚠️ Selecciona un método de pago")
+                return
+
+            # Obtener notas del campo de la interfaz
+            notas = self.entry_notas_pago.get().strip()
+
+            # Obtener el ingreso_id del servicio seleccionado
+            item = self.tree_facturacion.item(selection[0])
+            values = item['values']
+
+            # IMPORTANTE: El ingreso_id está en la posición [1]
+            ingreso_id = values[1]
+            cliente = values[2]
+            vehiculo = values[3]
+
+            # Importar módulos necesarios
+            import json
+            from datetime import datetime
+
+            # Obtener información actual del pago
+            self.db.cursor.execute('''
+                SELECT id, monto_total, monto_pagado, historial_pagos, estado_pago
+                FROM pagos
+                WHERE ingreso_id = ?
+            ''', (ingreso_id,))
+
+            pago_registro = self.db.cursor.fetchone()
+
+            if not pago_registro:
+                messagebox.showerror("Error",
+                                     "❌ No se encontró información de pago\n\n"
+                                     "Primero debes establecer un precio para este servicio")
+                return
+
+            pago_id, monto_total, monto_pagado_actual, historial_json, estado_actual = pago_registro
+
+            # Calcular el monto pendiente
+            monto_pendiente = monto_total - (monto_pagado_actual or 0)
+
+            # Advertir si el pago es mayor al pendiente
+            if monto > monto_pendiente:
+                respuesta = messagebox.askyesno("Confirmar Pago",
+                                                f"⚠️ El monto a pagar (${monto:.2f}) es MAYOR\n"
+                                                f"al pendiente (${monto_pendiente:.2f})\n\n"
+                                                f"¿Deseas continuar de todas formas?")
+                if not respuesta:
+                    return
+
+            # Confirmar el pago
+            confirmacion = messagebox.askyesno(
+                "Confirmar Registro de Pago",
+                f"¿Registrar el siguiente pago?\n\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"👤 Cliente: {cliente}\n"
+                f"🚗 Vehículo: {vehiculo}\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"💵 Monto: ${monto:.2f}\n"
+                f"💳 Método: {metodo_pago}\n"
+                f"📝 Notas: {notas if notas else '(sin notas)'}\n\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"💰 Total del servicio: ${monto_total:.2f}\n"
+                f"✅ Ya pagado: ${monto_pagado_actual or 0:.2f}\n"
+                f"🔜 Nuevo total pagado: ${(monto_pagado_actual or 0) + monto:.2f}"
             )
-            return
 
-        metodo = self.combo_metodo_pago.get()
-        notas = self.entry_notas_pago.get().strip()
+            if not confirmacion:
+                return
 
-        # Calcular nuevo estado
-        nuevo_pagado = monto_pagado + monto_pago
-        if nuevo_pagado >= monto_total:
-            nuevo_estado = 'Pagado'
-        elif nuevo_pagado > 0:
-            nuevo_estado = 'Parcial'
-        else:
-            nuevo_estado = 'Pendiente'
+            # Calcular nuevo monto pagado
+            nuevo_monto_pagado = (monto_pagado_actual or 0) + monto
 
-        confirmacion = messagebox.askyesno(
-            "Confirmar Pago",
-            f"¿Registrar el siguiente pago?\n\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"Cliente: {cliente}\n"
-            f"Vehículo: {vehiculo}\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"💰 Monto del pago: ${monto_pago:.2f}\n"
-            f"💳 Método: {metodo}\n\n"
-            f"📊 Resumen:\n"
-            f"   Total del servicio: ${monto_total:.2f}\n"
-            f"   Pagado anteriormente: ${monto_pagado:.2f}\n"
-            f"   Nuevo pago: ${monto_pago:.2f}\n"
-            f"   ━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"   Total pagado: ${nuevo_pagado:.2f}\n"
-            f"   Pendiente: ${monto_total - nuevo_pagado:.2f}\n"
-            f"   Estado: {nuevo_estado}"
-        )
+            # Actualizar historial de pagos
+            if historial_json:
+                try:
+                    historial = json.loads(historial_json)
+                except:
+                    historial = []
+            else:
+                historial = []
 
-        if not confirmacion:
-            return
+            # Agregar el nuevo pago al historial
+            historial.append({
+                'fecha': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'monto': monto,
+                'metodo': metodo_pago,
+                'registrado_por': self.user_id,
+                'notas': notas if notas else None
+            })
 
-        try:
-            # Registrar el pago
+            # Determinar el nuevo estado del pago
+            if nuevo_monto_pagado >= monto_total:
+                nuevo_estado = 'Pagado'
+            elif nuevo_monto_pagado > 0:
+                nuevo_estado = 'Parcial'
+            else:
+                nuevo_estado = 'Pendiente'
+
+            # Actualizar el registro en la base de datos
             self.db.cursor.execute('''
-                        INSERT INTO pagos (facturacion_id, monto, metodo_pago, registrado_por, notas)
-                        VALUES (?, ?, ?, ?, ?)
-                    ''', (factura_id, monto_pago, metodo, self.user_id, notas))
+                UPDATE pagos
+                SET monto_pagado = ?,
+                    estado_pago = ?,
+                    ultimo_pago = ?,
+                    ultimo_metodo_pago = ?,
+                    ultimo_fecha_pago = CURRENT_TIMESTAMP,
+                    ultimo_registrado_por = ?,
+                    historial_pagos = ?
+                WHERE ingreso_id = ?
+            ''', (nuevo_monto_pagado, nuevo_estado, monto, metodo_pago,
+                  self.user_id, json.dumps(historial), ingreso_id))
 
-            # Actualizar facturación
-            self.db.cursor.execute('''
-                        UPDATE facturacion
-                        SET monto_pagado = ?, estado_pago = ?
-                        WHERE id = ?
-                    ''', (nuevo_pagado, nuevo_estado, factura_id))
-
+            # Guardar cambios
             self.db.conn.commit()
 
-            messagebox.showinfo(
-                "✓ Pago Registrado",
-                f"El pago se registró correctamente\n\n"
-                f"💰 Monto pagado: ${monto_pago:.2f}\n"
-                f"💳 Método: {metodo}\n"
-                f"📊 Estado: {nuevo_estado}\n\n"
-                f"Pendiente: ${monto_total - nuevo_pagado:.2f}"
-            )
+            # Mostrar mensaje de éxito
+            messagebox.showinfo("✅ Pago Registrado",
+                                f"Pago registrado correctamente\n\n"
+                                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                                f"💵 Monto pagado: ${monto:.2f}\n"
+                                f"💳 Método: {metodo_pago}\n"
+                                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                                f"📊 Nuevo estado: {nuevo_estado}\n"
+                                f"💰 Total pagado: ${nuevo_monto_pagado:.2f} de ${monto_total:.2f}\n"
+                                f"⏳ Pendiente: ${monto_total - nuevo_monto_pagado:.2f}")
 
-            # Limpiar formulario
+            # Limpiar los campos del formulario
             self.entry_monto_pago.delete(0, tk.END)
             self.entry_notas_pago.delete(0, tk.END)
+            self.combo_metodo_pago.current(0)
 
-            # Actualizar vistas
+            # Recargar la tabla de facturación
             self.cargar_facturacion()
+
+            # Actualizar resumen financiero
             self.actualizar_resumen_financiero()
 
         except Exception as e:
-            messagebox.showerror("Error", f"❌ Error al registrar pago:\n\n{str(e)}")
-            self.db.conn.rollback()
-
+            messagebox.showerror("Error", f"❌ Error al registrar el pago:\n\n{str(e)}")
+            import traceback
+            print("Error completo:")
+            print(traceback.format_exc())
     def ver_detalle_facturacion(self):
         """Muestra el detalle completo de facturación y pagos"""
         selected = self.tree_facturacion.selection()
@@ -2675,7 +2652,7 @@ class EjecutivoWindow:
         # Obtener información completa
         self.db.cursor.execute('''
             SELECT monto_total, monto_pagado, estado_pago, fecha_creacion
-            FROM facturacion
+            FROM pagos
             WHERE id = ?
         ''', (factura_id,))
 
@@ -2775,7 +2752,7 @@ class EjecutivoWindow:
                 COALESCE(SUM(monto_total - monto_pagado), 0),
                 SUM(CASE WHEN estado_pago = 'Pagado' THEN 1 ELSE 0 END),
                 SUM(CASE WHEN estado_pago != 'Pagado' THEN 1 ELSE 0 END)
-            FROM facturacion
+            FROM pagos
             WHERE strftime('%m', fecha_creacion) = ? 
             AND strftime('%Y', fecha_creacion) = ?
         ''', (f'{mes_actual:02d}', str(anio_actual)))
@@ -2798,7 +2775,7 @@ class EjecutivoWindow:
                 COALESCE(SUM(monto_total - monto_pagado), 0),
                 SUM(CASE WHEN estado_pago = 'Pagado' THEN 1 ELSE 0 END),
                 SUM(CASE WHEN estado_pago != 'Pagado' THEN 1 ELSE 0 END)
-            FROM facturacion
+            FROM pagos
             WHERE strftime('%Y', fecha_creacion) = ?
         ''', (str(anio_actual),))
 
@@ -2817,7 +2794,7 @@ class EjecutivoWindow:
                 COUNT(*),
                 SUM(CASE WHEN estado_pago = 'Pagado' THEN 1 ELSE 0 END),
                 SUM(CASE WHEN estado_pago != 'Pagado' THEN 1 ELSE 0 END)
-            FROM facturacion
+            FROM pagos
         ''')
 
         stats = self.db.cursor.fetchone()
@@ -2864,7 +2841,7 @@ class GerenteWindow:
 
         self.root.title(f"Alan Automotriz - {nombre}")
         self.root.geometry("1000x650")
-        # ... resto del código
+
 
     def crear_tab_asignar(self):
         frame = ttk.Frame(self.tab_asignar, padding="20")
@@ -2997,16 +2974,17 @@ class GerenteWindow:
         self.iniciar_actualizacion_tiempo()
 
     def asignar_plazo_vehiculo(self):
-        """Asigna un plazo personalizado al vehículo seleccionado"""
+        """Asigna un plazo personalizado al vehículo seleccionado y lo guarda en BD"""
         from datetime import datetime, timedelta
 
         seleccion = self.tree_todos.selection()
         if not seleccion:
-            messagebox.showwarning("Advertencia",
-                                   "⚠️ Seleccione un vehículo de la tabla")
+            messagebox.showwarning("Advertencia", "⚠️ Seleccione un vehículo de la tabla")
             return
 
         item_id = seleccion[0]
+        valores = self.tree_todos.item(item_id)['values']
+        ingreso_id = valores[0]
 
         # Obtener valores de tiempo
         try:
@@ -3014,24 +2992,51 @@ class GerenteWindow:
             horas = int(self.entry_horas.get())
             minutos = int(self.entry_minutos.get())
         except ValueError:
-            messagebox.showerror("Error",
-                                 "❌ Por favor ingrese números válidos")
+            messagebox.showerror("Error", "❌ Por favor ingrese números válidos")
+            return
+
+        # Validar plazo
+        if dias == 0 and horas == 0 and minutos == 0:
+            messagebox.showerror("Error", "❌ El plazo debe ser mayor a 0")
             return
 
         # Crear plazo
         plazo_personalizado = timedelta(days=dias, hours=horas, minutes=minutos)
+        tiempo_inicio = datetime.now()
 
-        # Validar que sea mayor a 0
-        if plazo_personalizado.total_seconds() <= 0:
-            messagebox.showerror("Error",
-                                 "❌ El plazo debe ser mayor a 0")
-            return
-
-        # Asignar tiempo de inicio y plazo
-        self.tiempos_inicio[item_id] = datetime.now()
+        # Asignar en memoria
+        self.tiempos_inicio[item_id] = tiempo_inicio
         self.plazos[item_id] = plazo_personalizado
 
-        # Crear texto inicial del plazo (tiempo restante completo)
+        # ===== GUARDAR EN BASE DE DATOS =====
+        try:
+            self.db.cursor.execute('''
+                UPDATE ingresos 
+                SET plazo_dias = ?, 
+                    plazo_horas = ?, 
+                    plazo_minutos = ?,
+                    fecha_inicio_plazo = ?,
+                    plazo_activo = 1
+                WHERE id = ?
+            ''', (dias, horas, minutos, tiempo_inicio.strftime('%Y-%m-%d %H:%M:%S'), ingreso_id))
+
+            self.db.conn.commit()
+
+            # Registrar en historial de servicios
+            self.db.cursor.execute('''
+                INSERT INTO servicios (ingreso_id, tipo_servicio, descripcion, realizado_por)
+                VALUES (?, ?, ?, ?)
+            ''', (ingreso_id, 'Plazo Asignado',
+                  f'Plazo establecido: {dias} días, {horas} horas, {minutos} minutos',
+                  self.user_id))
+
+            self.db.conn.commit()
+
+        except Exception as e:
+            messagebox.showerror("Error", f"❌ Error al guardar plazo:\n{str(e)}")
+            return
+
+        # Actualizar vista
         segundos_totales = plazo_personalizado.total_seconds()
         dias_texto = int(segundos_totales // 86400)
         horas_texto = int((segundos_totales % 86400) // 3600)
@@ -3045,56 +3050,112 @@ class GerenteWindow:
         else:
             plazo_texto = f"⏳ {minutos_texto}m {segundos_texto}s"
 
-        # Obtener valores actuales y actualizar la columna 6 (índice 6 = columna 7)
-        valores_actuales = list(self.tree_todos.item(item_id, 'values'))
-
-        # Asegurarse de que la lista tenga 7 elementos
+        valores_actuales = list(valores)
         while len(valores_actuales) < 7:
             valores_actuales.append('')
-
         valores_actuales[6] = plazo_texto
         self.tree_todos.item(item_id, values=valores_actuales)
 
         messagebox.showinfo("✓ Plazo Asignado",
-                            f"✅ Cuenta regresiva iniciada\n\n"
+                            f"✅ Plazo guardado y cuenta regresiva iniciada\n\n"
                             f"⏱️ Tiempo asignado: {dias}d {horas}h {minutos}m\n\n"
-                            f"📊 El sistema mostrará:\n"
-                            f"   • Tiempo restante (cuenta regresiva)\n"
-                            f"   • Color según % transcurrido\n"
-                            f"   • Retraso si pasa el tiempo límite\n\n"
-                            f"💡 La columna 'Plazo' se actualizará cada segundo")
+                            f"💾 El plazo se mantendrá aunque cierres el programa")
 
     def pausar_plazo_vehiculo(self):
-        """Pausa el contador de tiempo del vehículo seleccionado"""
+        """Pausa/finaliza el plazo y registra el resultado en historial"""
+        from datetime import datetime
+
         seleccion = self.tree_todos.selection()
         if not seleccion:
-            messagebox.showwarning("Advertencia",
-                                   "⚠️ Seleccione un vehículo")
+            messagebox.showwarning("Advertencia", "⚠️ Seleccione un vehículo")
             return
 
         item_id = seleccion[0]
+        valores = self.tree_todos.item(item_id)['values']
+        ingreso_id = valores[0]
 
-        # Eliminar del seguimiento
-        if item_id in self.tiempos_inicio:
-            del self.tiempos_inicio[item_id]
-        if item_id in self.plazos:
-            del self.plazos[item_id]
+        # Verificar si tiene plazo activo
+        if item_id not in self.tiempos_inicio or item_id not in self.plazos:
+            messagebox.showinfo("Información", "Este vehículo no tiene un plazo activo")
+            return
 
-        # Cambiar a blanco
-        self.tree_todos.item(item_id, tags=('blanco',))
+        # Calcular resultado del plazo
+        tiempo_transcurrido = datetime.now() - self.tiempos_inicio[item_id]
+        plazo_total = self.plazos[item_id]
+        porcentaje = (tiempo_transcurrido.total_seconds() / plazo_total.total_seconds()) * 100
 
-        # Actualizar valor
-        valores = list(self.tree_todos.item(item_id, 'values'))
+        # Determinar categoría
+        if porcentaje < 33:
+            categoria = "TEMPRANO"
+            emoji = "🟢"
+            mensaje = "El trabajo se completó con tiempo de sobra"
+        elif porcentaje < 66:
+            categoria = "NORMAL"
+            emoji = "🟡"
+            mensaje = "El trabajo se completó en tiempo adecuado"
+        elif porcentaje < 100:
+            categoria = "URGENTE"
+            emoji = "🟠"
+            mensaje = "El trabajo se completó justo a tiempo"
+        else:
+            categoria = "ATRASADO"
+            emoji = "🔴"
+            retraso = tiempo_transcurrido - plazo_total
+            mensaje = f"El trabajo se completó con retraso de {int(retraso.total_seconds() / 3600)} horas"
 
-        # Asegurarse de que la lista tenga 7 elementos
-        while len(valores) < 7:
-            valores.append('')
+        # Confirmar finalización
+        confirmacion = messagebox.askyesno(
+            "Confirmar Finalización de Plazo",
+            f"¿Marcar este plazo como finalizado?\n\n"
+            f"{emoji} Categoría: {categoria}\n"
+            f"Porcentaje usado: {porcentaje:.1f}%\n\n"
+            f"{mensaje}\n\n"
+            f"Esto se registrará en el historial del servicio."
+        )
 
-        valores[6] = 'Terminado'
-        self.tree_todos.item(item_id, values=valores)
+        if not confirmacion:
+            return
 
-        messagebox.showinfo("✓ Terminado",
-                            "El contador de tiempo ha sido detenido")
+        try:
+            # Guardar en base de datos
+            self.db.cursor.execute('''
+                UPDATE ingresos 
+                SET plazo_activo = 0
+                WHERE id = ?
+            ''', (ingreso_id,))
+
+            # Registrar en historial
+            descripcion = (f"Plazo finalizado - Categoría: {categoria} ({porcentaje:.1f}% del tiempo usado). "
+                           f"{mensaje}")
+
+            self.db.cursor.execute('''
+                INSERT INTO servicios (ingreso_id, tipo_servicio, descripcion, realizado_por)
+                VALUES (?, ?, ?, ?)
+            ''', (ingreso_id, f'Plazo Finalizado - {categoria}', descripcion, self.user_id))
+
+            self.db.conn.commit()
+
+            # Eliminar de memoria
+            if item_id in self.tiempos_inicio:
+                del self.tiempos_inicio[item_id]
+            if item_id in self.plazos:
+                del self.plazos[item_id]
+
+            # Actualizar vista
+            self.tree_todos.item(item_id, tags=('blanco',))
+            valores_actuales = list(valores)
+            while len(valores_actuales) < 7:
+                valores_actuales.append('')
+            valores_actuales[6] = f'{emoji} Finalizado ({categoria})'
+            self.tree_todos.item(item_id, values=valores_actuales)
+
+            messagebox.showinfo("✓ Plazo Finalizado",
+                                f"{emoji} Plazo marcado como: {categoria}\n\n"
+                                f"Se registró en el historial del servicio")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"❌ Error al finalizar plazo:\n{str(e)}")
+            self.db.conn.rollback()
 
     def iniciar_actualizacion_tiempo(self):
         """Inicia el thread que actualiza los colores y tiempo restante"""
@@ -3174,35 +3235,35 @@ class GerenteWindow:
         thread.start()
 
     def cargar_todos_vehiculos(self):
-        """Carga todos los vehículos con columna de plazo"""
-        from datetime import timedelta
+        """Carga todos los vehículos CON sus plazos guardados en BD"""
+        from datetime import datetime, timedelta
 
-        # Guardar plazos actuales antes de limpiar
+        # GUARDAR plazos actuales en memoria antes de limpiar
         plazos_guardados = {}
-        tiempos_guardados = {}
-
         for item_id in self.tree_todos.get_children():
-            try:
-                if item_id in self.plazos and item_id in self.tiempos_inicio:
-                    valores = self.tree_todos.item(item_id)['values']
-                    if valores and len(valores) > 0:
-                        ingreso_id = valores[0]
-                        plazos_guardados[ingreso_id] = self.plazos[item_id]
-                        tiempos_guardados[ingreso_id] = self.tiempos_inicio[item_id]
-            except:
-                pass
+            valores = self.tree_todos.item(item_id)['values']
+            if valores:
+                ingreso_id = valores[0]
+                if item_id in self.tiempos_inicio and item_id in self.plazos:
+                    plazos_guardados[ingreso_id] = {
+                        'inicio': self.tiempos_inicio[item_id],
+                        'plazo': self.plazos[item_id]
+                    }
 
-        # Limpiar todo
+        # Limpiar vista
         for item in self.tree_todos.get_children():
             self.tree_todos.delete(item)
 
+        # Limpiar memoria
         self.tiempos_inicio.clear()
         self.plazos.clear()
 
-        # Cargar datos desde base de datos
+        # Cargar datos desde base de datos CON información de plazos
         self.db.cursor.execute('''
             SELECT i.id, c.nombre, v.marca || ' ' || v.modelo, v.placa, i.estado,
-                   COALESCE(u.nombre, 'Sin asignar')
+                   COALESCE(u.nombre, 'Sin asignar'),
+                   i.plazo_dias, i.plazo_horas, i.plazo_minutos, 
+                   i.fecha_inicio_plazo, i.plazo_activo
             FROM ingresos i
             JOIN clientes c ON i.cliente_id = c.id
             JOIN vehiculos v ON i.vehiculo_id = v.id
@@ -3210,26 +3271,114 @@ class GerenteWindow:
             ORDER BY i.fecha_ingreso DESC
         ''')
 
+        # RESTAURAR plazos desde la memoria guardada o desde BD
         for row in self.db.cursor.fetchall():
-            ingreso_id = row[0]
+            ingreso_id, cliente, vehiculo, placa, estado, asignado, \
+                plazo_dias, plazo_horas, plazo_minutos, fecha_inicio_str, plazo_activo = row
+
             plazo_texto = 'Sin plazo'
+            item_id = None
 
-            # Verificar si tenía un plazo guardado
+            # PRIORIDAD 1: Restaurar desde memoria (si existe)
             if ingreso_id in plazos_guardados:
-                plazo = plazos_guardados[ingreso_id]
-                dias = plazo.days
-                horas = plazo.seconds // 3600
-                minutos = (plazo.seconds % 3600) // 60
-                plazo_texto = f"{dias}d {horas}h {minutos}m"
+                tiempo_inicio = plazos_guardados[ingreso_id]['inicio']
+                plazo_total = plazos_guardados[ingreso_id]['plazo']
 
-            # Insertar fila CON la columna de plazo (7 columnas totales)
-            valores_completos = list(row) + [plazo_texto]
-            item_id = self.tree_todos.insert('', 'end', values=valores_completos)
+                tiempo_transcurrido = datetime.now() - tiempo_inicio
+                tiempo_restante = plazo_total - tiempo_transcurrido
+                segundos_restantes = tiempo_restante.total_seconds()
 
-            # Restaurar el plazo activo
-            if ingreso_id in plazos_guardados:
-                self.plazos[item_id] = plazos_guardados[ingreso_id]
-                self.tiempos_inicio[item_id] = tiempos_guardados[ingreso_id]
+                # Formatear texto
+                if segundos_restantes > 0:
+                    dias = int(segundos_restantes // 86400)
+                    horas = int((segundos_restantes % 86400) // 3600)
+                    minutos = int((segundos_restantes % 3600) // 60)
+                    segundos = int(segundos_restantes % 60)
+
+                    if dias > 0:
+                        plazo_texto = f"⏳ {dias}d {horas}h {minutos}m {segundos}s"
+                    elif horas > 0:
+                        plazo_texto = f"⏳ {horas}h {minutos}m {segundos}s"
+                    else:
+                        plazo_texto = f"⏳ {minutos}m {segundos}s"
+                else:
+                    segundos_retraso = abs(segundos_restantes)
+                    dias = int(segundos_retraso // 86400)
+                    horas = int((segundos_retraso % 86400) // 3600)
+                    minutos = int((segundos_retraso % 3600) // 60)
+
+                    if dias > 0:
+                        plazo_texto = f"🚨 RETRASO: {dias}d {horas}h {minutos}m"
+                    elif horas > 0:
+                        plazo_texto = f"🚨 RETRASO: {horas}h {minutos}m"
+                    else:
+                        plazo_texto = f"🚨 RETRASO: {minutos}m"
+
+                valores_completos = [ingreso_id, cliente, vehiculo, placa, estado, asignado, plazo_texto]
+                item_id = self.tree_todos.insert('', 'end', values=valores_completos)
+
+                # RESTAURAR en memoria
+                self.tiempos_inicio[item_id] = tiempo_inicio
+                self.plazos[item_id] = plazo_total
+
+            # PRIORIDAD 2: Si tiene plazo activo en BD (nuevo ingreso o primera carga)
+            elif plazo_activo and fecha_inicio_str:
+                try:
+                    plazo_total = timedelta(days=plazo_dias or 0,
+                                            hours=plazo_horas or 0,
+                                            minutes=plazo_minutos or 0)
+
+                    fecha_inicio = datetime.strptime(fecha_inicio_str, '%Y-%m-%d %H:%M:%S')
+
+                    tiempo_transcurrido = datetime.now() - fecha_inicio
+                    tiempo_restante = plazo_total - tiempo_transcurrido
+                    segundos_restantes = tiempo_restante.total_seconds()
+
+                    if segundos_restantes > 0:
+                        dias = int(segundos_restantes // 86400)
+                        horas = int((segundos_restantes % 86400) // 3600)
+                        minutos = int((segundos_restantes % 3600) // 60)
+                        segundos = int(segundos_restantes % 60)
+
+                        if dias > 0:
+                            plazo_texto = f"⏳ {dias}d {horas}h {minutos}m {segundos}s"
+                        elif horas > 0:
+                            plazo_texto = f"⏳ {horas}h {minutos}m {segundos}s"
+                        else:
+                            plazo_texto = f"⏳ {minutos}m {segundos}s"
+                    else:
+                        segundos_retraso = abs(segundos_restantes)
+                        dias = int(segundos_retraso // 86400)
+                        horas = int((segundos_retraso % 86400) // 3600)
+                        minutos = int((segundos_retraso % 3600) // 60)
+
+                        if dias > 0:
+                            plazo_texto = f"🚨 RETRASO: {dias}d {horas}h {minutos}m"
+                        elif horas > 0:
+                            plazo_texto = f"🚨 RETRASO: {horas}h {minutos}m"
+                        else:
+                            plazo_texto = f"🚨 RETRASO: {minutos}m"
+
+                    valores_completos = [ingreso_id, cliente, vehiculo, placa, estado, asignado, plazo_texto]
+                    item_id = self.tree_todos.insert('', 'end', values=valores_completos)
+
+                    self.tiempos_inicio[item_id] = fecha_inicio
+                    self.plazos[item_id] = plazo_total
+
+                except Exception as e:
+                    valores_completos = [ingreso_id, cliente, vehiculo, placa, estado, asignado, 'Error en plazo']
+                    self.tree_todos.insert('', 'end', values=valores_completos)
+
+            # PRIORIDAD 3: Plazo finalizado
+            elif plazo_dias is not None and not plazo_activo:
+                plazo_texto = '✓ Finalizado'
+                valores_completos = [ingreso_id, cliente, vehiculo, placa, estado, asignado, plazo_texto]
+                self.tree_todos.insert('', 'end', values=valores_completos)
+
+            # PRIORIDAD 4: Sin plazo
+            else:
+                valores_completos = [ingreso_id, cliente, vehiculo, placa, estado, asignado, plazo_texto]
+                self.tree_todos.insert('', 'end', values=valores_completos)
 
     def crear_tab_mensajes(self):
         """Crea la pestaña de mensajes/tareas con mejor distribución de espacio"""
